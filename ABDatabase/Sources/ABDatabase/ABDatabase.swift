@@ -20,7 +20,7 @@ public class ABDatabase {
         }
         
         self.nativeActions
-            .addNative("GetTableColumns", ABNativeAction(callFn: { (args: [String: AnyObject]) in
+            .addNative("GetTableColumnInfos", ABNativeAction(callFn: { (args: [String: AnyObject]) in
                 guard let tableName = args["tableName"] as? String else {
                     return ABNativeAction.jsonArgsError()
                 }
@@ -35,19 +35,20 @@ public class ABDatabase {
                     columnTypes.append(.int)
 
                     let rows_DB = try self.db.query_Select("PRAGMA TABLE_INFO('\(tableName)')", columnTypes)
-                    var rows = [[AnyObject]]()
+                    var columnInfos = [[String: AnyObject]]()
                     for row_DB in rows_DB {
-                        rows.append([
-                            row_DB[1],
-                            row_DB[2],
-                            row_DB[3]
-                        ])
+                        var columnInfo = [String: AnyObject]()
+                        columnInfo["name"] = row_DB[1] as AnyObject
+                        columnInfo["type"] = row_DB[2] as AnyObject
+                        columnInfo["notNull"] = ((row_DB[3] as? Int? ?? 0) == 0 ? false : true) as AnyObject
+                        
+                        columnInfos.append(columnInfo)
                     }
                     
-                    result["columns"] = rows as AnyObject?
+                    result["columnInfos"] = columnInfos as AnyObject?
                     result["error"] = NSNull()
                 } catch {
-                    result["columns"] = NSNull()
+                    result["columnInfos"] = NSNull()
                     result["error"] = "\(error)" as AnyObject?
                 }
                     
@@ -79,6 +80,8 @@ public class ABDatabase {
                 return result
             }))
             .addNative("Transaction_Finish", ABNativeAction(callFn: { (args: [String: AnyObject]) in
+                print("Transaction_Finish")
+                
                 var result = [String: AnyObject]()
                 
                 do {
@@ -88,38 +91,44 @@ public class ABDatabase {
                     
                     try self.db.transaction_Finish(commit)
                     
-                    result["success"] = true as AnyObject?
+                    self.db.transaction_CurrentId = nil
+                    
                     result["error"] = NSNull()
                 } catch {
-                    result["success"] = false as AnyObject?
                     result["error"] = "\(error)" as AnyObject?
                 }
                 
                 return result
             }))
             .addNative("Transaction_IsAutocommit", ABNativeAction(callFn: { (args: [String: AnyObject]) in
+                print("Transaction_IsAutocommit")
+                
                 var result = [String: AnyObject]()
                 
                 do {
-                    result["result"] = try self.db.transaction_IsAutocommit() as AnyObject?
+                    result["transactionId"] = self.db.transaction_CurrentId == nil ? NSNull() : (self.db.transaction_CurrentId as AnyObject?)
                     result["error"] = NSNull()
                 } catch {
-                    result["result"] = NSNull() as AnyObject?
+                    result["transactionId"] = NSNull() as AnyObject?
                     result["error"] = "\(error)" as AnyObject?
                 }
                 
                 return result
             }))
             .addNative("Transaction_Start", ABNativeAction(callFn: { (args: [String: AnyObject]) in
-                var result = [String: AnyObject]()
+                print("Transaction_Start")
                 
+                var result = [String: AnyObject]()
                 do {
                     try self.db.transaction_Start()
                     
-                    result["success"] = true as AnyObject?
+                    self.db.transaction_CurrentId = self.db.transaction_NextId
+                    self.db.transaction_NextId += 1
+                    
+                    result["transactionId"] = self.db.transaction_CurrentId as AnyObject?
                     result["error"] = NSNull()
                 } catch {
-                    result["success"] = false as AnyObject?
+                    result["transactionId"] = NSNull()
                     result["error"] = "\(error)" as AnyObject?
                 }
                 
@@ -134,11 +143,9 @@ public class ABDatabase {
                     }
                     
                     try self.db.query_Execute(query)
-                    
-                    result["success"] = true as AnyObject?
+
                     result["error"] = NSNull()
                 } catch {
-                    result["success"] = false as AnyObject?
                     result["error"] = "\(error)" as AnyObject?
                 }
                 

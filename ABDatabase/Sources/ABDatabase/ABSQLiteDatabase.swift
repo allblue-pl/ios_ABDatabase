@@ -11,10 +11,12 @@ import SQLite3
 public class ABSQLiteDatabase
 {
     
+    public var transaction_CurrentId: Int? = nil
+    public var transaction_NextId: Int = 0
+    
     private var db: OpaquePointer?
     private let queue = DispatchQueue(label: "ABSQLiteDatabase.queue", attributes: .concurrent)
     private var transaction_Autocommit = true
-    
     
     public func close() {
         if (self.db != nil) {
