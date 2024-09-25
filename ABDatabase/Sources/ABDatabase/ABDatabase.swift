@@ -1,9 +1,3 @@
-//
-//  ABSqlLiteDatabase.swift
-//  Alta Associations
-//
-//  Created by Jakub Zolcik on 21/03/2021.
-//
 
 import Foundation
 import SQLite3
@@ -17,9 +11,7 @@ public class ABDatabase {
     private var transaction_NextId: Int
     
     
-    init() throws {
-        var test = TestClass()
-        
+    public init() throws {
         queue = DispatchQueue(label: "ABDatabase.queue", attributes: .concurrent)
     
         transaction_CurrentId = nil
@@ -48,7 +40,89 @@ public class ABDatabase {
         sqlite3_close(db)
     }
     
-    public func transaction_Finish(transactionId: Int?, _ commit: Bool, execute onError: @escaping (_ error: ABDatabaseError) -> Void, execute onResult: @escaping () -> Void) {
+    public func getTableColumnInfos(_ tableName: String, transactionId: Int? = nil, timeout: Int = 0, execute onResult: @escaping (_ columnInfos: [ColumnInfo]) -> Void, execute onError: @escaping (_ error: ABDatabaseError) -> Void) {
+        queue.sync {
+            /* Transaction Check */
+            var error = validateTransactionId(transactionId)
+            if let error {
+                if timeout <= 0 {
+                    onError(error)
+                    return
+                }
+                    
+                DispatchQueue.main.asyncAfter(deadline: .now() + (Double(timeout) / 1000.0)) {
+                    self.getTableColumnInfos(tableName, transactionId: transactionId, execute: onResult, execute: onError)
+                }
+                return
+            }
+            
+            /* Statement Prepare */
+            let query = "PRAGMA TABLE_INFO('\(tableName)')"
+            let queryStatement: OpaquePointer
+            do {
+                queryStatement = try rawQuery(query)
+            } catch ABDatabaseError.cannotPrepare(let message) {
+                onError(ABDatabaseError.cannotPrepare(message))
+                return
+            } catch (let error) {
+                onError(ABDatabaseError.cannotPrepare("\(error)"))
+                return
+            }
+            
+            /* Run Query */
+            var columnInfos = [ColumnInfo]()
+            while (sqlite3_step(queryStatement) == SQLITE_ROW) {
+                columnInfos.append(ColumnInfo(
+                    name: getStringFromColumn(queryStatement, 1),
+                    type: getStringFromColumn(queryStatement, 2),
+                    notNull: (sqlite3_column_int(queryStatement, Int32(3)) as Int32) != 0)
+                )
+            }
+            
+            onResult(columnInfos)
+        }
+    }
+    
+    public func getTableNames(transactionId: Int? = nil, timeout: Int = 0, execute onResult: @escaping (_ tableNames: [String]) -> Void, execute onError: @escaping (_ error: ABDatabaseError) -> Void) {
+        queue.sync {
+            /* Transaction Check */
+            var error = validateTransactionId(transactionId)
+            if let error {
+                if timeout <= 0 {
+                    onError(error)
+                    return
+                }
+                    
+                DispatchQueue.main.asyncAfter(deadline: .now() + (Double(timeout) / 1000.0)) {
+                    self.getTableNames(transactionId: transactionId, execute: onResult, execute: onError)
+                }
+                return
+            }
+            
+            /* Statement Prepare */
+            let query = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+            let queryStatement: OpaquePointer
+            do {
+                queryStatement = try rawQuery(query)
+            } catch ABDatabaseError.cannotPrepare(let message) {
+                onError(ABDatabaseError.cannotPrepare(message))
+                return
+            } catch (let error) {
+                onError(ABDatabaseError.cannotPrepare("\(error)"))
+                return
+            }
+            
+            /* Run Query */
+            var tableNames = [String]()
+            while (sqlite3_step(queryStatement) == SQLITE_ROW) {
+                tableNames.append(getStringFromColumn(queryStatement, 0))
+            }
+            
+            onResult(tableNames)
+        }
+    }
+    
+    public func transaction_Finish(_ transactionId: Int, _ commit: Bool, execute onResult: @escaping () -> Void, execute onError: @escaping (_ error: ABDatabaseError) -> Void) {
         queue.sync {
             guard transaction_CurrentId != nil else {
                 onError(ABDatabaseError.noTransactionInProgress)
@@ -78,7 +152,7 @@ public class ABDatabase {
         }
     }
     
-    public func transaction_IsAutocommit(execute onError: @escaping (_ error: ABDatabaseError) -> Void, execute onResult: @escaping (_ transactionId: Int?) -> Void) {
+    public func transaction_IsAutocommit(execute onResult: @escaping (_ transactionId: Int?) -> Void, execute onError: @escaping (_ error: ABDatabaseError) -> Void) {
         queue.sync {
             var inTransaction: Bool = sqlite3_get_autocommit(db) != 0
             guard inTransaction == (transaction_CurrentId != nil) else {
@@ -134,7 +208,7 @@ public class ABDatabase {
         }
     }
     
-    public func query_Execute(_ query: String, _ transactionId: Int?, execute onResult: @escaping () -> Void, execute onError: @escaping (_ error: ABDatabaseError) -> Void, timeout: Int = 0) {
+    public func query_Execute(_ query: String, transactionId: Int? = nil, execute onResult: @escaping () -> Void, execute onError: @escaping (_ error: ABDatabaseError) -> Void, timeout: Int = 0) {
         queue.sync {
             /* Transaction Check */
             var error = validateTransactionId(transactionId)
@@ -146,7 +220,7 @@ public class ABDatabase {
                 }
                     
                 DispatchQueue.main.asyncAfter(deadline: .now() + (Double(timeout) / 1000.0)) {
-                    self.query_Execute(query, transactionId, execute: onResult, execute: onError)
+                    self.query_Execute(query, transactionId: transactionId, execute: onResult, execute: onError)
                 }
                 return
             }
@@ -177,7 +251,7 @@ public class ABDatabase {
         }
     }
     
-    public func query_Select(_ query: String, _ columnTypes: [SelectColumnType], _ transactionId: Int?, execute onResult: (_ rows: [[AnyObject]]) -> Void, execute onError: (_ error: ABDatabaseError) -> Void, timeout: Int = 0)  {
+    public func query_Select(_ query: String, _ columnTypes: [SelectColumnType], transactionId: Int? = nil, execute onResult: @escaping (_ rows: [[AnyObject]]) -> Void, execute onError: @escaping (_ error: ABDatabaseError) -> Void, timeout: Int = 0)  {
         queue.sync {
             /* Transaction Check */
             var error = self.validateTransactionId(transactionId)
@@ -189,7 +263,7 @@ public class ABDatabase {
                 }
                     
                 DispatchQueue.main.asyncAfter(deadline: .now() + (Double(timeout) / 1000.0)) {
-                    self.query_Select(query, columnTypes, transactionId, execute: onResult, execute: onError)
+                    self.query_Select(query, columnTypes, transactionId: transactionId, execute: onResult, execute: onError)
                 }
                 return
             }
@@ -213,28 +287,55 @@ public class ABDatabase {
                 for i in 0..<columnsCount {
                     if sqlite3_column_type(queryStatement, Int32(i)) == SQLITE_NULL {
                         row.append(NSNull())
-                    } else if columnTypes[i] == .double {
-                        row.append(sqlite3_column_double(queryStatement, Int32(i))as AnyObject)
-                    } else if columnTypes[i] == .int {
+                    } else if columnTypes[i] == SelectColumnType.Bool {
+                        row.append((sqlite3_column_int(queryStatement, Int32(i)) != 0) as AnyObject)
+                    } else if columnTypes[i] == SelectColumnType.Float {
+                        row.append(sqlite3_column_double(queryStatement, Int32(i)) as AnyObject)
+                    } else if columnTypes[i] == SelectColumnType.Int {
                         row.append(sqlite3_column_int(queryStatement, Int32(i)) as AnyObject)
-                    } else if (columnTypes[i] == .text) {
+                    } else if columnTypes[i] == SelectColumnType.JSON {
                         guard let columnValue_Result = sqlite3_column_text(queryStatement, Int32(i)) else {
-//                            print("Something to do")
-                            row.append("" as AnyObject)
+                            printError("Cannot parse row json.")
+                            row.append(NSNull())
                             continue
                         }
+                        let json_Str: String = String(cString: columnValue_Result)
+                        let json_Data: Data? = json_Str.data(using: .utf8)
+                        if let json_Data {
+                            let json_Parsed = try? JSONSerialization.jsonObject(with: json_Data)
+                            if let json = json_Parsed as? [String: AnyObject] {
+                                if let value = json["value"] as? [String: AnyObject] {
+                                    row.append("" as AnyObject)
+                                    continue
+                                }
+                            }
+                        }
                         
-                        row.append(String(cString: columnValue_Result) as AnyObject)
+                        printError("Cannot parse row json: " + json_Str)
+                        row.append(NSNull())
+                    } else if columnTypes[i] == SelectColumnType.Long {
+                        row.append(sqlite3_column_int64(queryStatement, Int32(i)) as AnyObject)
+                    } else if (columnTypes[i] == SelectColumnType.String) {
+                        row.append(self.getStringFromColumn(queryStatement, i) as AnyObject)
                     }
                 }
                 rows.append(row)
             }
             sqlite3_finalize(queryStatement)
             
-            return rows
+            onResult(rows)
         }
     }
     
+    
+    private func getStringFromColumn(_ queryStatement: OpaquePointer, _ index: Int) -> String {
+        guard let columnValue_Result = sqlite3_column_text(queryStatement, Int32(index)) else {
+            printError("Cannot get string from row.")
+            return ""
+        }
+        
+        return String(cString: columnValue_Result)
+    }
     
     private func printError(_ message: String) {
         print("ABDatabase Error -> \(message)")
@@ -281,10 +382,16 @@ public class ABDatabase {
 }
 
 
-public enum ColumnType {
-    case double
-    case int
-    case text
+//public enum ColumnType {
+//    case double
+//    case int
+//    case text
+//}
+
+public struct ColumnInfo {
+    public let name: String
+    public let type: String
+    public let notNull: Bool
 }
 
 public enum ABDatabaseError: Error {

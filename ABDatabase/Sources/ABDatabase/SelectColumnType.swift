@@ -1,7 +1,7 @@
 
 import Foundation
 
-public enum SelectColumnTypea {
+public enum SelectColumnType {
     case Bool
     case Float
     case Int
@@ -9,7 +9,7 @@ public enum SelectColumnTypea {
     case JSON
     case String
     
-    static public fromIndex(index: int) -> SelectColumnType throws {
+    static public func fromIndex(_ index: Int) throws -> SelectColumnType {
         switch index {
         case 0:
             return SelectColumnType.Bool
@@ -30,6 +30,6 @@ public enum SelectColumnTypea {
     
 }
 
-//public enum SelectColumnTypeError: Error {
-//    case unknownSelectColumnType(index: Int)
-//}
+public enum SelectColumnTypeError: Error {
+    case unknownSelectColumnType(index: Int)
+}
