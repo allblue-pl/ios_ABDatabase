@@ -4,6 +4,9 @@ import SQLite3
 
 public class ABDatabase {
     
+    static private var instance_DB: OpaquePointer? = nil
+    static private var instance_Queue: DispatchQueue? = nil
+    
     private var db: OpaquePointer
     private let queue: DispatchQueue
     
@@ -12,10 +15,20 @@ public class ABDatabase {
     
     
     public init() throws {
-        queue = DispatchQueue(label: "ABDatabase.queue", attributes: .concurrent)
+        if let i_Queue = ABDatabase.instance_Queue {
+            queue = i_Queue
+        } else {
+            queue = DispatchQueue(label: "ABDatabase.queue", attributes: .concurrent)
+            ABDatabase.instance_Queue = queue
+        }
     
         transaction_CurrentId = nil
         transaction_NextId = 0
+        
+        if let dbRef = ABDatabase.instance_DB {
+            db = dbRef
+            return
+        }
         
         var dbRef: OpaquePointer?
         
@@ -33,6 +46,7 @@ public class ABDatabase {
         }
         
         db = dbRef
+        ABDatabase.instance_DB = db
     }
     
     
@@ -304,8 +318,8 @@ public class ABDatabase {
                         if let json_Data {
                             let json_Parsed = try? JSONSerialization.jsonObject(with: json_Data)
                             if let json = json_Parsed as? [String: AnyObject] {
-                                if let value = json["value"] as? [String: AnyObject] {
-                                    row.append("" as AnyObject)
+                                if let value = json["value"] as? AnyObject {
+                                    row.append(value as AnyObject)
                                     continue
                                 }
                             }
