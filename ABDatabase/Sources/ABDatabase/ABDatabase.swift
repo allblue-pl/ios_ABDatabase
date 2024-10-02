@@ -4,50 +4,30 @@ import SQLite3
 
 public class ABDatabase {
     
-    static private var instance_DB: OpaquePointer? = nil
-    static private var instance_Queue: DispatchQueue? = nil
+    static private var instance: ABDatabase? = nil
+    static private var lock = NSLock()
+    static private var queue = DispatchQueue(label: "ABDatabase.queue", attributes: .concurrent)
     
-    private var db: OpaquePointer
-    private let queue: DispatchQueue
+    
+    static public func getInstance() throws -> ABDatabase {
+        ABDatabase.lock.lock()
+        
+        if let instance = ABDatabase.instance {
+            ABDatabase.lock.unlock()
+            return instance
+        }
+        
+        let instance = try ABDatabase()
+        ABDatabase.instance = instance
+        
+        return instance
+    }
+    
+    
+    private var db: OpaquePointer?
     
     private var transaction_CurrentId: Int?
     private var transaction_NextId: Int
-    
-    
-    public init() throws {
-        if let i_Queue = ABDatabase.instance_Queue {
-            queue = i_Queue
-        } else {
-            queue = DispatchQueue(label: "ABDatabase.queue", attributes: .concurrent)
-            ABDatabase.instance_Queue = queue
-        }
-    
-        transaction_CurrentId = nil
-        transaction_NextId = 0
-        
-        if let dbRef = ABDatabase.instance_DB {
-            db = dbRef
-            return
-        }
-        
-        var dbRef: OpaquePointer?
-        
-        let fileUrl = try! FileManager.default
-            .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-            .appendingPathComponent("ab-database.sqlite")
-        
-        guard sqlite3_open(fileUrl.path, &dbRef) == SQLITE_OK else {
-            sqlite3_close(dbRef)
-            throw ABDatabaseError.cannotOpenDatabase
-        }
-        
-        guard let dbRef else {
-            throw ABDatabaseError.cannotOpenDatabase
-        }
-        
-        db = dbRef
-        ABDatabase.instance_DB = db
-    }
     
     
     public func close() {
@@ -55,7 +35,7 @@ public class ABDatabase {
     }
     
     public func getTableColumnInfos(_ tableName: String, transactionId: Int? = nil, timeout: Int = 0, execute onResult: @escaping (_ columnInfos: [ColumnInfo]) -> Void, execute onError: @escaping (_ error: ABDatabaseError) -> Void) {
-        queue.sync {
+        ABDatabase.queue.sync {
             /* Transaction Check */
             var error = validateTransactionId(transactionId)
             if let error {
@@ -98,7 +78,7 @@ public class ABDatabase {
     }
     
     public func getTableNames(transactionId: Int? = nil, timeout: Int = 0, execute onResult: @escaping (_ tableNames: [String]) -> Void, execute onError: @escaping (_ error: ABDatabaseError) -> Void) {
-        queue.sync {
+        ABDatabase.queue.sync {
             /* Transaction Check */
             var error = validateTransactionId(transactionId)
             if let error {
@@ -137,7 +117,7 @@ public class ABDatabase {
     }
     
     public func transaction_Finish(_ transactionId: Int, _ commit: Bool, execute onResult: @escaping () -> Void, execute onError: @escaping (_ error: ABDatabaseError) -> Void) {
-        queue.sync {
+        ABDatabase.queue.sync {
             guard transaction_CurrentId != nil else {
                 onError(ABDatabaseError.noTransactionInProgress)
                 return
@@ -167,7 +147,7 @@ public class ABDatabase {
     }
     
     public func transaction_IsAutocommit(execute onResult: @escaping (_ transactionId: Int?) -> Void, execute onError: @escaping (_ error: ABDatabaseError) -> Void) {
-        queue.sync {
+        ABDatabase.queue.sync {
             var inTransaction: Bool = sqlite3_get_autocommit(db) != 0
             guard inTransaction == (transaction_CurrentId != nil) else {
                 onError(ABDatabaseError.transactionIdInconsistency(transaction_CurrentId, inTransaction))
@@ -193,7 +173,7 @@ public class ABDatabase {
 //    }
     
     public func transaction_Start(execute onResult: @escaping (_ transactionId: Int) -> Void, execute onError: @escaping (_ error: ABDatabaseError) -> Void, timeout: Int = 0) {
-        queue.sync {
+        ABDatabase.queue.sync {
             if let transaction_CurrentId {
                 if timeout <= 0 {
                     onError(ABDatabaseError.otherTransactionAlreadyInProgress(transaction_CurrentId))
@@ -223,7 +203,7 @@ public class ABDatabase {
     }
     
     public func query_Execute(_ query: String, transactionId: Int? = nil, execute onResult: @escaping () -> Void, execute onError: @escaping (_ error: ABDatabaseError) -> Void, timeout: Int = 0) {
-        queue.sync {
+        ABDatabase.queue.sync {
             /* Transaction Check */
             var error = validateTransactionId(transactionId)
             if let error {
@@ -266,7 +246,7 @@ public class ABDatabase {
     }
     
     public func query_Select(_ query: String, _ columnTypes: [SelectColumnType], transactionId: Int? = nil, execute onResult: @escaping (_ rows: [[AnyObject]]) -> Void, execute onError: @escaping (_ error: ABDatabaseError) -> Void, timeout: Int = 0)  {
-        queue.sync {
+        ABDatabase.queue.sync {
             /* Transaction Check */
             var error = self.validateTransactionId(transactionId)
             if let error {
@@ -341,6 +321,24 @@ public class ABDatabase {
         }
     }
     
+    
+    private init() throws {
+        transaction_CurrentId = nil
+        transaction_NextId = 0
+        
+        let fileUrl = try! FileManager.default
+            .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            .appendingPathComponent("ab-database.sqlite")
+        
+        guard sqlite3_open(fileUrl.path, &db) == SQLITE_OK else {
+            sqlite3_close(db)
+            throw ABDatabaseError.cannotOpenDatabase
+        }
+        
+        guard let db else {
+            throw ABDatabaseError.cannotOpenDatabase
+        }
+    }
     
     private func getStringFromColumn(_ queryStatement: OpaquePointer, _ index: Int) -> String {
         guard let columnValue_Result = sqlite3_column_text(queryStatement, Int32(index)) else {
