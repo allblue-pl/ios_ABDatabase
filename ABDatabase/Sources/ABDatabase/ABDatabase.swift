@@ -149,7 +149,7 @@ public class ABDatabase {
     public func transaction_IsAutocommit(execute onResult: @escaping (_ transactionId: Int?) -> Void, execute onError: @escaping (_ error: ABDatabaseError) -> Void) {
         ABDatabase.queue.sync {
             var inTransaction: Bool = sqlite3_get_autocommit(db) != 0
-            guard inTransaction == (transaction_CurrentId != nil) else {
+            guard inTransaction != (transaction_CurrentId != nil) else {
                 onError(ABDatabaseError.transactionIdInconsistency(transaction_CurrentId, inTransaction))
                 return
             }
