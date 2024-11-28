@@ -237,9 +237,15 @@ public class ABDatabase {
                 
                 sqlite3_finalize(queryStatement)
                 onError(ABDatabaseError.cannotExecute(error))
+                return
             }
             
-            sqlite3_finalize(queryStatement)
+            do {
+                sqlite3_finalize(queryStatement)
+            } catch (let error) {
+                onError(ABDatabaseError.cannotFinalize("\(error)"))
+                return
+            }
             
             onResult()
         }
@@ -298,10 +304,8 @@ public class ABDatabase {
                         if let json_Data {
                             let json_Parsed = try? JSONSerialization.jsonObject(with: json_Data)
                             if let json = json_Parsed as? [String: AnyObject] {
-                                if let value = json["value"] as? AnyObject {
-                                    row.append(value as AnyObject)
-                                    continue
-                                }
+                                row.append(json as AnyObject)
+                                continue
                             }
                         }
                         
@@ -410,6 +414,7 @@ public enum ABDatabaseError: Error {
     case cannotBeginTransaction
     case cannotCommit
     case cannotExecute(_ message: String)
+    case cannotFinalize(_ message: String)
     case cannotOpenDatabase
     case cannotPrepare(_ message: String)
     case cannotRollback
