@@ -34,7 +34,7 @@ public class ABDatabase {
         sqlite3_close(db)
     }
     
-    public func getTableColumnInfos(_ tableName: String, transactionId: Int? = nil, timeout: Int = 0, execute onResult: @escaping (_ columnInfos: [ColumnInfo]) -> Void, execute onError: @escaping (_ error: ABDatabaseError) -> Void) {
+    public func getTableColumnInfos(_ tableName: String, transactionId: Int? = nil, timeout: Int = 0, onResult: @escaping (_ columnInfos: [ColumnInfo]) -> Void, onError: @escaping (_ error: ABDatabaseError) -> Void) {
         ABDatabase.queue.sync {
             /* Transaction Check */
             var error = validateTransactionId(transactionId)
@@ -45,7 +45,7 @@ public class ABDatabase {
                 }
                     
                 DispatchQueue.main.asyncAfter(deadline: .now() + (Double(timeout) / 1000.0)) {
-                    self.getTableColumnInfos(tableName, transactionId: transactionId, execute: onResult, execute: onError)
+                    self.getTableColumnInfos(tableName, transactionId: transactionId, onResult: onResult, onError: onError)
                 }
                 return
             }
@@ -77,7 +77,7 @@ public class ABDatabase {
         }
     }
     
-    public func getTableNames(transactionId: Int? = nil, timeout: Int = 0, execute onResult: @escaping (_ tableNames: [String]) -> Void, execute onError: @escaping (_ error: ABDatabaseError) -> Void) {
+    public func getTableNames(transactionId: Int? = nil, timeout: Int = 0, onResult: @escaping (_ tableNames: [String]) -> Void, onError: @escaping (_ error: ABDatabaseError) -> Void) {
         ABDatabase.queue.sync {
             /* Transaction Check */
             var error = validateTransactionId(transactionId)
@@ -88,7 +88,7 @@ public class ABDatabase {
                 }
                     
                 DispatchQueue.main.asyncAfter(deadline: .now() + (Double(timeout) / 1000.0)) {
-                    self.getTableNames(transactionId: transactionId, execute: onResult, execute: onError)
+                    self.getTableNames(transactionId: transactionId, onResult: onResult, onError: onError)
                 }
                 return
             }
@@ -116,7 +116,7 @@ public class ABDatabase {
         }
     }
     
-    public func transaction_Finish(_ transactionId: Int, _ commit: Bool, execute onResult: @escaping () -> Void, execute onError: @escaping (_ error: ABDatabaseError) -> Void) {
+    public func transaction_Finish(_ transactionId: Int, _ commit: Bool, onResult: @escaping () -> Void, onError: @escaping (_ error: ABDatabaseError) -> Void) {
         ABDatabase.queue.sync {
             guard transaction_CurrentId != nil else {
                 onError(ABDatabaseError.noTransactionInProgress)
@@ -146,7 +146,7 @@ public class ABDatabase {
         }
     }
     
-    public func transaction_IsAutocommit(execute onResult: @escaping (_ transactionId: Int?) -> Void, execute onError: @escaping (_ error: ABDatabaseError) -> Void) {
+    public func transaction_IsAutocommit(onResult: @escaping (_ transactionId: Int?) -> Void, onError: @escaping (_ error: ABDatabaseError) -> Void) {
         ABDatabase.queue.sync {
             var inTransaction: Bool = sqlite3_get_autocommit(db) != 0
             guard inTransaction != (transaction_CurrentId != nil) else {
@@ -172,7 +172,7 @@ public class ABDatabase {
 //        }
 //    }
     
-    public func transaction_Start(execute onResult: @escaping (_ transactionId: Int) -> Void, execute onError: @escaping (_ error: ABDatabaseError) -> Void, timeout: Int = 0) {
+    public func transaction_Start(onResult: @escaping (_ transactionId: Int) -> Void, onError: @escaping (_ error: ABDatabaseError) -> Void, timeout: Int = 0) {
         ABDatabase.queue.sync {
             if let transaction_CurrentId {
                 if timeout <= 0 {
@@ -181,7 +181,7 @@ public class ABDatabase {
                 }
                 
                 DispatchQueue.main.asyncAfter(deadline: .now() + (Double(timeout) / 1000.0)) {
-                    self.transaction_Start(execute: onResult, execute: onError)
+                    self.transaction_Start(onResult: onResult, onError: onError)
                 }
                 return
             }
@@ -202,7 +202,7 @@ public class ABDatabase {
         }
     }
     
-    public func query_Execute(_ query: String, transactionId: Int? = nil, execute onResult: @escaping () -> Void, execute onError: @escaping (_ error: ABDatabaseError) -> Void, timeout: Int = 0) {
+    public func query_Execute(_ query: String, transactionId: Int? = nil, onResult: @escaping () -> Void, onError: @escaping (_ error: ABDatabaseError) -> Void, timeout: Int = 0) {
         ABDatabase.queue.sync {
             /* Transaction Check */
             var error = validateTransactionId(transactionId)
@@ -214,7 +214,7 @@ public class ABDatabase {
                 }
                     
                 DispatchQueue.main.asyncAfter(deadline: .now() + (Double(timeout) / 1000.0)) {
-                    self.query_Execute(query, transactionId: transactionId, execute: onResult, execute: onError)
+                    self.query_Execute(query, transactionId: transactionId, onResult: onResult, onError: onError)
                 }
                 return
             }
@@ -251,7 +251,7 @@ public class ABDatabase {
         }
     }
     
-    public func query_Select(_ query: String, _ columnTypes: [SelectColumnType], transactionId: Int? = nil, execute onResult: @escaping (_ rows: [[AnyObject]]) -> Void, execute onError: @escaping (_ error: ABDatabaseError) -> Void, timeout: Int = 0)  {
+    public func query_Select(_ query: String, _ columnTypes: [SelectColumnType], transactionId: Int? = nil, onResult: @escaping (_ rows: [[AnyObject]]) -> Void, onError: @escaping (_ error: ABDatabaseError) -> Void, timeout: Int = 0)  {
         ABDatabase.queue.sync {
             /* Transaction Check */
             var error = self.validateTransactionId(transactionId)
@@ -263,7 +263,7 @@ public class ABDatabase {
                 }
                     
                 DispatchQueue.main.asyncAfter(deadline: .now() + (Double(timeout) / 1000.0)) {
-                    self.query_Select(query, columnTypes, transactionId: transactionId, execute: onResult, execute: onError)
+                    self.query_Select(query, columnTypes, transactionId: transactionId, onResult: onResult, onError: onError)
                 }
                 return
             }
